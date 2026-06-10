@@ -518,7 +518,6 @@ async def process_scan_app(background_tasks: BackgroundTasks, raw_request: Reque
     
     logger.info(f"Scanning file: {file_name} ({file_size} bytes), hash: {file_hash[:16]}...")
     
-    # ========== FIX: Determine input_type based on file extension ==========
     file_ext = file_name.lower()
     if file_ext.endswith(('.apk', '.xapk', '.apks', '.aab')):
         input_type = 'app'
@@ -526,16 +525,12 @@ async def process_scan_app(background_tasks: BackgroundTasks, raw_request: Reque
         input_type = 'file'
     
     logger.info(f"📁 File type detected: {input_type} for {file_name}")
-    # ========== END FIX ==========
-    
-    # Determine user_id
     extracted_id = _extract_user_id(raw_request)
     if extracted_id:
         user_id = extracted_id
     if not user_id:
         user_id = "22222222-2222-2222-2222-222222222222"
         
-    # Check cache first - USE input_type here
     cached = None
     cache_start = time.time()
     try:
@@ -565,7 +560,6 @@ async def process_scan_app(background_tasks: BackgroundTasks, raw_request: Reque
             logger.warning(f"Error processing cached file result: {e}")
             cached = None
             
-    # Simple rule-based logic for file classification
     is_malicious = file_name.lower().endswith(('.exe', '.apk', '.bat', '.cmd', '.scr', '.vbs', '.js', '.jar'))
     verdict = "malicious" if is_malicious else "safe"
     threat_type = "trojan" if is_malicious else "clean"
@@ -595,7 +589,6 @@ async def process_scan_app(background_tasks: BackgroundTasks, raw_request: Reque
     severity = "high" if is_malicious else "low"
     action = "blocked" if is_malicious else "none"
     
-    # Save to databases in background - USE input_type here!
     try:
         if prediction_repo and hasattr(prediction_repo, 'save_prediction'):
             background_tasks.add_task(
@@ -603,7 +596,7 @@ async def process_scan_app(background_tasks: BackgroundTasks, raw_request: Reque
                 request_id, user_id, input_type, file_hash, prediction_data,
                 "file-malware-v1.0", prediction_time, severity, action
             )
-            logger.info(f"✅ Saved {input_type} scan for {file_name}")
+            logger.info(f"Saved {input_type} scan for {file_name}")
         else:
             logger.warning("prediction_repo or save_prediction not available, skipping save")
     except Exception as e:
@@ -629,14 +622,12 @@ async def process_search_app_safety(request: AppSearchRequest, background_tasks:
     app_query = request.app_name.strip()
     logger.info(f"Searching app safety: '{app_query}'")
     
-    # Determine user_id
     extracted_id = _extract_user_id(raw_request)
     if extracted_id:
         user_id = extracted_id
     if not user_id:
         user_id = "22222222-2222-2222-2222-222222222222"
         
-    # Check cache first
     cached = None
     cache_start = time.time()
     try:
@@ -651,7 +642,6 @@ async def process_search_app_safety(request: AppSearchRequest, background_tasks:
             logger.info(f"Cache hit for app from {cached['from_cache']}")
             result = cached["result"]
             
-            # Format result to match what log_cache_hit expects
             mock_result = {
                 "label": "safe" if result.get("safe") else "malicious",
                 "type": "clean" if result.get("safe") else "unsafe_app",
@@ -675,7 +665,6 @@ async def process_search_app_safety(request: AppSearchRequest, background_tasks:
             logger.warning(f"Error processing cached app result: {e}")
             cached = None
             
-    # List of verified safe apps
     known_apps = {
         "whatsapp": {"category": "Social / Communication", "developer": "WhatsApp LLC", "rating": "4.3", "installs": "5B+"},
         "instagram": {"category": "Social / Communication", "developer": "Instagram", "rating": "4.0", "installs": "1B+"},
@@ -689,7 +678,6 @@ async def process_search_app_safety(request: AppSearchRequest, background_tasks:
         "facebook": {"category": "Social / Communication", "developer": "Meta Platforms, Inc.", "rating": "4.1", "installs": "5B+"}
     }
     
-    # Simple lookup
     matched_key = None
     for key in known_apps:
         if key in app_query.lower():
@@ -737,7 +725,6 @@ async def process_search_app_safety(request: AppSearchRequest, background_tasks:
     severity = "low" if safe else "medium"
     action = "none" if safe else "flagged"
     
-    # Save to databases in background
     try:
         if prediction_repo and hasattr(prediction_repo, 'save_prediction'):
             background_tasks.add_task(

@@ -23,22 +23,17 @@ if os.path.exists(dotenv_path):
 else:
     load_dotenv()
 
-# ─────────────────────────────────────────────────────────────
 # Database URLs
-# ─────────────────────────────────────────────────────────────
 
 POSTGRES_URL = os.getenv("DATABASE_URL")
 MONGO_URL    = os.getenv("MONGODB_URI")
 REDIS_URL    = os.getenv("REDIS_URL")
 
-# Debug prints
 print("POSTGRES_URL =", POSTGRES_URL)
 print("MONGO_URL =", MONGO_URL)
 print("REDIS_URL =", REDIS_URL)
 
-# ─────────────────────────────────────────────────────────────
 # Seed Data
-# ─────────────────────────────────────────────────────────────
 
 SEED_DATA = [
     {
@@ -92,16 +87,11 @@ DUMMY_USERS = [
     },
 ]
 
-# ─────────────────────────────────────────────────────────────
 # Utility Function
-# ─────────────────────────────────────────────────────────────
-
 def make_hash(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
-# ─────────────────────────────────────────────────────────────
 # PostgreSQL Seed
-# ─────────────────────────────────────────────────────────────
 
 def seed_postgres():
     print("\n[1/3] Seeding PostgreSQL...")
@@ -109,7 +99,6 @@ def seed_postgres():
     conn = psycopg2.connect(POSTGRES_URL)
     cur = conn.cursor()
 
-    # Insert users
     for u in DUMMY_USERS:
         cur.execute("""
             INSERT INTO users
@@ -124,7 +113,6 @@ def seed_postgres():
             u["role"]
         ))
 
-    # Insert threat scan data
     for i, item in enumerate(SEED_DATA):
 
         request_id = f"aaaa{i:04d}-0000-0000-0000-000000000000"
@@ -190,9 +178,7 @@ def seed_postgres():
 
     print("PostgreSQL Seeding Complete")
 
-# ─────────────────────────────────────────────────────────────
 # MongoDB Seed
-# ─────────────────────────────────────────────────────────────
 
 def seed_mongodb():
     print("\n[2/3] Seeding MongoDB...")
@@ -238,16 +224,13 @@ def seed_mongodb():
 
     print(f"MongoDB Seeding Complete — {count} inserted")
 
-# ─────────────────────────────────────────────────────────────
 # Redis Seed
-# ─────────────────────────────────────────────────────────────
 
 def seed_redis():
     print("\n[3/3] Seeding Redis...")
 
     r = redis.from_url(REDIS_URL, decode_responses=True)
 
-    # Test connection
     r.ping()
 
     count = 0
@@ -271,9 +254,7 @@ def seed_redis():
 
     print(f"Redis Seeding Complete — {count} inserted")
 
-# ─────────────────────────────────────────────────────────────
 # Main
-# ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
 

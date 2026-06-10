@@ -1,4 +1,3 @@
-# backend/routes/graph.py
 """API routes for Neo4j threat network graph visualization"""
 from fastapi import APIRouter, Query
 from typing import Optional

@@ -1,4 +1,3 @@
-# backend/db/neo4j_integration.py
 """Neo4j Graph Database integration for Threat Network visualization"""
 import os
 import logging
@@ -8,7 +7,6 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-# Neo4j connection settings
 NEO4J_URL = os.getenv("NEO4J_URL", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "cyberpass123")
@@ -31,13 +29,12 @@ class Neo4jIntegration:
                 auth=(NEO4J_USER, NEO4J_PASSWORD),
                 max_connection_lifetime=300,
             )
-            # Verify connectivity
             self.driver.verify_connectivity()
             self._connected = True
-            logger.info("✅ Neo4j connected at %s", NEO4J_URL)
+            logger.info("Neo4j connected at %s", NEO4J_URL)
             self._init_constraints()
         except Exception as e:
-            logger.warning("⚠️ Neo4j connection failed: %s. Graph features disabled.", e)
+            logger.warning("Neo4j connection failed: %s. Graph features disabled.", e)
             self._connected = False
 
     @property
@@ -64,23 +61,19 @@ class Neo4jIntegration:
         except Exception as e:
             logger.warning("Failed to create Neo4j constraints: %s", e)
 
-    # ─── Helper: extract domain from URL ─────────────────────────────────────
     @staticmethod
     def _extract_domain(url_string: str) -> Optional[str]:
         """Extract domain name from a URL string"""
         try:
             parsed = urlparse(url_string)
             domain = parsed.netloc or parsed.path
-            # Remove port number
             domain = domain.split(":")[0]
-            # Remove www.
             if domain.startswith("www."):
                 domain = domain[4:]
             return domain if domain else None
         except Exception:
             return None
 
-    # ─── Save scan result as graph ───────────────────────────────────────────
     def save_scan_to_graph(
         self,
         request_id: str,
@@ -111,13 +104,10 @@ class Neo4jIntegration:
             timestamp = datetime.utcnow().isoformat()
 
             with self.driver.session() as session:
-                # 1. MERGE User node
                 session.run(
                     "MERGE (u:User {uid: $uid})",
                     uid=user_id,
                 )
-
-                # 2. CREATE Scan node
                 session.run(
                     """
                     CREATE (s:Scan {
@@ -140,8 +130,6 @@ class Neo4jIntegration:
                     explanation=explanation,
                     timestamp=timestamp,
                 )
-
-                # 3. User -[:PERFORMED]-> Scan
                 session.run(
                     """
                     MATCH (u:User {uid: $uid}), (s:Scan {scan_id: $scan_id})
@@ -151,7 +139,6 @@ class Neo4jIntegration:
                     scan_id=request_id,
                 )
 
-                # 4. Create input node (URL or Email) and link to Scan
                 if input_type == "url":
                     domain = self._extract_domain(input_value)
                     session.run(
@@ -168,7 +155,6 @@ class Neo4jIntegration:
                         ts=timestamp,
                         scan_id=request_id,
                     )
-                    # URL -> Domain
                     if domain:
                         session.run(
                             """
@@ -219,7 +205,6 @@ class Neo4jIntegration:
                         scan_id=request_id,
                     )
 
-                # 5. Scan -[:CLASSIFIED_AS]-> ThreatType
                 session.run(
                     """
                     MERGE (t:ThreatType {name: $name})
@@ -232,7 +217,6 @@ class Neo4jIntegration:
                     confidence=confidence,
                 )
 
-                # 6. Scan -[:TRIGGERED]-> Indicator (for each indicator)
                 for ind in indicators:
                     if ind:
                         session.run(
@@ -246,12 +230,10 @@ class Neo4jIntegration:
                             scan_id=request_id,
                         )
 
-            logger.info("✅ Saved to Neo4j graph: %s (%s)", request_id[:16], input_type)
+            logger.info("Saved to Neo4j graph: %s (%s)", request_id[:16], input_type)
 
         except Exception as e:
-            logger.warning("⚠️ Neo4j save failed: %s", e)
-
-    # ─── Query: full threat network ──────────────────────────────────────────
+            logger.warning("Neo4j save failed: %s", e)
     def get_threat_network(
         self, limit: int = 200, threat_filter: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -269,7 +251,6 @@ class Neo4jIntegration:
 
         try:
             with self.driver.session() as session:
-                # Build Cypher query
                 where_clause = ""
                 params: Dict[str, Any] = {"limit": limit}
 
@@ -303,8 +284,6 @@ class Neo4jIntegration:
                 for record in result:
                     scan_id = record["scan_id"]
                     scan_node_id = f"scan_{scan_id[:12]}"
-
-                    # Add scan node
                     if scan_node_id not in nodes_map:
                         nodes_map[scan_node_id] = {
                             "id": scan_node_id,
@@ -314,11 +293,8 @@ class Neo4jIntegration:
                             "confidence": record["scan_confidence"],
                             "timestamp": record["scan_ts"],
                         }
-
-                    # Add target node
                     target_label = record["target_label"]
                     target_props = dict(record["target_props"]) if record["target_props"] else {}
-
                     target_node_id = self._make_node_id(target_label, target_props)
                     if target_node_id and target_node_id not in nodes_map:
                         nodes_map[target_node_id] = {
@@ -327,8 +303,6 @@ class Neo4jIntegration:
                             "type": target_label,
                             "status": target_props.get("status", target_props.get("name", "")),
                         }
-
-                    # Add edge
                     if target_node_id:
                         edges.append({
                             "source": scan_node_id,
@@ -336,7 +310,6 @@ class Neo4jIntegration:
                             "type": record["rel_type"],
                         })
 
-                # Also fetch Domain <- URL relationships
                 domain_result = session.run(
                     """
                     MATCH (url:URL)-[:BELONGS_TO]->(d:Domain)
@@ -381,7 +354,6 @@ class Neo4jIntegration:
             logger.error("Neo4j get_threat_network failed: %s", e)
             return {"nodes": [], "edges": [], "stats": {"total_nodes": 0, "total_edges": 0}}
 
-    # ─── Query: domain-specific subgraph ─────────────────────────────────────
     def get_domain_network(self, domain: str) -> Dict[str, Any]:
         """Get all threats linked to a specific domain"""
         if not self.is_connected:
@@ -414,18 +386,15 @@ class Neo4jIntegration:
                     url_id = f"url_{hash(url.get('value', '')) % 10**8}"
                     scan_id = f"scan_{s.get('scan_id', '')[:12]}"
 
-                    # Domain node
                     if domain_id not in nodes_map:
                         nodes_map[domain_id] = {"id": domain_id, "label": domain, "type": "Domain"}
 
-                    # URL node
                     if url.get("value") and url_id not in nodes_map:
                         nodes_map[url_id] = {
                             "id": url_id, "label": url["value"][:60], "type": "URL"
                         }
                         edges.append({"source": url_id, "target": domain_id, "type": "BELONGS_TO"})
 
-                    # Scan node
                     if s.get("scan_id") and scan_id not in nodes_map:
                         nodes_map[scan_id] = {
                             "id": scan_id,
@@ -437,14 +406,12 @@ class Neo4jIntegration:
                         if url.get("value"):
                             edges.append({"source": scan_id, "target": url_id, "type": "SCANNED"})
 
-                    # ThreatType node
                     if t.get("name"):
                         threat_id = f"threat_{t['name']}"
                         if threat_id not in nodes_map:
                             nodes_map[threat_id] = {"id": threat_id, "label": t["name"], "type": "ThreatType"}
                         edges.append({"source": scan_id, "target": threat_id, "type": "CLASSIFIED_AS"})
 
-                    # Indicator node
                     if ind.get("name"):
                         ind_id = f"ind_{ind['name']}"
                         if ind_id not in nodes_map:
@@ -462,7 +429,6 @@ class Neo4jIntegration:
             logger.error("Neo4j domain network query failed: %s", e)
             return {"nodes": [], "edges": [], "stats": {"total_nodes": 0, "total_edges": 0}}
 
-    # ─── Query: graph statistics ─────────────────────────────────────────────
     def get_graph_stats(self) -> Dict[str, Any]:
         """Get high-level graph statistics for dashboard cards"""
         if not self.is_connected:
@@ -473,7 +439,6 @@ class Neo4jIntegration:
 
         try:
             with self.driver.session() as session:
-                # Node counts by label
                 node_counts = {}
                 for label in ["Scan", "URL", "Email", "File", "Domain", "ThreatType", "Indicator", "User"]:
                     result = session.run(f"MATCH (n:{label}) RETURN count(n) as cnt")
@@ -481,11 +446,9 @@ class Neo4jIntegration:
 
                 total_nodes = sum(node_counts.values())
 
-                # Total relationships
                 rel_result = session.run("MATCH ()-[r]->() RETURN count(r) as cnt")
                 total_edges = rel_result.single()["cnt"]
 
-                # Top 5 domains by scan count
                 top_domains_result = session.run(
                     """
                     MATCH (d:Domain)<-[:BELONGS_TO]-(url:URL)<-[:SCANNED]-(s:Scan)
@@ -499,7 +462,6 @@ class Neo4jIntegration:
                     for r in top_domains_result
                 ]
 
-                # Top 5 indicators
                 top_indicators_result = session.run(
                     """
                     MATCH (i:Indicator)<-[:TRIGGERED]-(s:Scan)
@@ -513,7 +475,6 @@ class Neo4jIntegration:
                     for r in top_indicators_result
                 ]
 
-                # Malicious vs safe scan counts
                 status_result = session.run(
                     """
                     MATCH (s:Scan)
@@ -538,7 +499,6 @@ class Neo4jIntegration:
                 "node_counts": {}, "top_domains": [], "top_indicators": [],
             }
 
-    # ─── Helpers ─────────────────────────────────────────────────────────────
     @staticmethod
     def _make_node_id(label: str, props: dict) -> Optional[str]:
         if label == "URL":
@@ -582,7 +542,6 @@ class Neo4jIntegration:
             logger.info("Neo4j driver closed")
 
 
-# Global instance — created lazily to avoid startup crashes
 neo4j_db: Optional[Neo4jIntegration] = None
 
 def get_neo4j() -> Optional[Neo4jIntegration]:

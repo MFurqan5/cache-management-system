@@ -1,4 +1,3 @@
-# backend/routes/auth.py
 """Authentication endpoints for SENTINELCACHE AI
    User storage: PostgreSQL (primary) with SQLite fallback.
 """
@@ -16,14 +15,12 @@ from backend.db import db
 
 logger = logging.getLogger(__name__)
 
-# Authentication Configuration
 SECRET_KEY = os.getenv("JWT_SECRET", os.getenv("APP_SECRET_KEY", "sentinelcache-ai-super-secret-key-change-in-prod-2026"))
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60  # 24 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Password hashing utilities
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
@@ -34,7 +31,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-# Token utility
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
     if expires_delta:
@@ -45,7 +41,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# Pydantic Schemas
 class UserRegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., min_length=3, max_length=100)
@@ -106,7 +101,6 @@ class TokenResponse(BaseModel):
 class MessageResponse(BaseModel):
     message: str
 
-# ─── Auth dependency ────────────────────────────────────────────────────────────
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import Depends
 
@@ -130,8 +124,6 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             headers={"WWW-Authenticate": "Bearer"},
         )
     return {"id": user_id}
-
-# ─── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserRegisterRequest):
@@ -161,7 +153,6 @@ async def register(user_data: UserRegisterRequest):
             detail="Database error during registration"
         )
 
-    # Hash and persist
     password_hash = get_password_hash(password)
     try:
         db.create_user(username, email, password_hash)
@@ -257,7 +248,6 @@ async def update_me(update_data: UserUpdateRequest, current_user: dict = Depends
     """Update current user's profile in PostgreSQL (username, email, and/or password)"""
     user_id = current_user.get("id")
 
-    # Build SET clause dynamically — only update provided fields
     fields = {}
     if update_data.username is not None:
         fields["username"] = update_data.username
@@ -274,7 +264,6 @@ async def update_me(update_data: UserUpdateRequest, current_user: dict = Depends
         import psycopg2.extras
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        # Check uniqueness for username/email changes
         if "username" in fields:
             cur.execute("SELECT id FROM users WHERE username = %s AND id != %s::uuid", (fields["username"], user_id))
             if cur.fetchone():

@@ -1,4 +1,3 @@
-# backend/cache/__init__.py
 import cachetools
 from datetime import datetime, timedelta
 import json
@@ -16,7 +15,6 @@ class ModelCache:
         self.model_cache = {}
         self.stats_cache = cachetools.TTLCache(maxsize=50, ttl=60)
         
-        # Add statistics tracking
         self.hits = 0
         self.misses = 0
     
@@ -68,5 +66,4 @@ class ModelCache:
         self.hits = 0
         self.misses = 0
 
-# Global cache instance
 cache_manager = ModelCache()

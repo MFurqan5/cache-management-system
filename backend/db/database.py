@@ -1,4 +1,3 @@
-# backend/db.py - Updated to handle both SQLite and Docker databases
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -9,19 +8,16 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# SQLite path for local storage
 SQLITE_PATH = Path("backend/data/sentinelcache.db")
 
 class Database:
     """Unified Database Manager - Handles SQLite + PostgreSQL/Redis/MongoDB"""
     
     def __init__(self):
-        # Initialize SQLite (always available)
         self.sqlite_path = SQLITE_PATH
         self.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
         self.init_sqlite()
         
-        # Try to initialize Docker databases (PostgreSQL, Redis, MongoDB)
         self.docker_available = False
         self.prediction_repo = None
         
@@ -32,8 +28,6 @@ class Database:
             logger.info("Docker databases (PostgreSQL/Redis/MongoDB) connected")
         except Exception as e:
             logger.warning(f"Docker databases not available: {e}. Using SQLite only.")
-    
-    # ============ SQLite Methods (Local Storage) ============
     
     def get_sqlite_connection(self):
         """Get SQLite database connection"""
@@ -50,7 +44,6 @@ class Database:
         with self.get_sqlite_connection() as conn:
             cursor = conn.cursor()
             
-            # Scans table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS scans (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,7 +62,6 @@ class Database:
                 )
             """)
             
-            # Create indexes for faster queries
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_timestamp 
                 ON scans(timestamp DESC)
@@ -85,7 +77,6 @@ class Database:
                 ON scans(is_malicious)
             """)
             
-            # Models table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS models (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,7 +88,6 @@ class Database:
                 )
             """)
 
-            # Users table (SQLite fallback — PostgreSQL is primary)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,7 +161,6 @@ class Database:
         with self.get_sqlite_connection() as conn:
             cursor = conn.cursor()
             
-            # Total scans in timeframe
             cursor.execute("""
                 SELECT COUNT(*) as total,
                        SUM(CASE WHEN scan_type = 'url' THEN 1 ELSE 0 END) as url_count,
@@ -185,7 +174,6 @@ class Database:
             
             stats = dict(cursor.fetchone())
             
-            # Get additional metrics
             cursor.execute("""
                 SELECT scan_type, 
                        COUNT(*) as count,
@@ -266,5 +254,4 @@ class Database:
             conn.commit()
             logger.info(f"Model {model_name} v{version} logged in SQLite")
 
-# Global database instance
 db = Database()

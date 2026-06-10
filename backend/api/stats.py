@@ -1,4 +1,3 @@
-# backend/routes/stats.py
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List, Dict
 from backend.api.auth import get_current_user
@@ -11,15 +10,12 @@ def get_fresh_connection():
     """Always get a fresh connection to avoid SSL timeout issues"""
     try:
         conn = prediction_repo.get_postgres_connection()
-        # Test if connection is alive
         conn.cursor().execute("SELECT 1")
         return conn
     except Exception:
-        # Force reconnect
-        prediction_repo._postgres_conn = None  # reset cached connection
+        prediction_repo._postgres_conn = None
         return prediction_repo.get_postgres_connection()
 
-# Setup logger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -31,7 +27,7 @@ async def get_history(
     offset: int = Query(0, ge=0),
     scan_type: Optional[str] = Query(None, pattern="^(url|email|file|app)$"),
     malicious_only: bool = False,
-    current_user: dict = Depends(get_current_user),  # ← ADD
+    current_user: dict = Depends(get_current_user),
 ):
     user_id = current_user.get("id") 
     """Get scan history from PostgreSQL"""
@@ -116,8 +112,6 @@ async def get_history(
             pass
         return {"total": 0, "scans": [], "error": str(e)}
     
-# ── CHANGE 2: Add /history/me route — paste this AFTER the /history function ──
-
 @router.get("/history/me")
 async def get_my_history(
     limit: int = Query(100, ge=1, le=1000),
@@ -175,7 +169,6 @@ def _get_summary_data(hours: int, user_id: Optional[str] = None):
         conn = prediction_repo.get_postgres_connection()
         cur = conn.cursor()
         
-        # 1. Total counts — ALL-TIME (no time filter) so Dashboard & History always match
         if user_id:
             cur.execute("""
                 SELECT 
@@ -215,12 +208,10 @@ def _get_summary_data(hours: int, user_id: Optional[str] = None):
         app_scans = row[4] or 0
         malicious = row[5] or 0
         
-        # Calculate local timezone offset in hours
         local_now = datetime.now()
         utc_now = datetime.utcnow()
         offset_hours = int(round((local_now - utc_now).total_seconds() / 3600))
         
-        # 2. Hourly activity (scan_activity) over past 24 hours - FIXED
         if user_id:
             cur.execute("""
                 SELECT 
@@ -246,7 +237,6 @@ def _get_summary_data(hours: int, user_id: Optional[str] = None):
             """)
         activity_rows = cur.fetchall()
         
-        # Shift database UTC hours to local hours
         hourly_data = {}
         for r in activity_rows:
             db_utc_hour = int(r[0])
@@ -268,7 +258,6 @@ def _get_summary_data(hours: int, user_id: Optional[str] = None):
                 "threats": bucket["threats"]
             })
             
-        # 3. Threat Distribution - FIXED
         if user_id:
             cur.execute("""
                 SELECT 
@@ -343,7 +332,6 @@ def _get_summary_data(hours: int, user_id: Optional[str] = None):
             {"name": "Clean", "value": round((distribution_counts["Clean"] / total_predictions) * 100, 1) if total_predictions > 0 else 0.0}
         ]
             
-        # 4. Recent Scans (latest 5) - FIXED
         if user_id:
             cur.execute("""
                 SELECT sr.id, sr.input_type, sr.created_at,
@@ -377,7 +365,6 @@ def _get_summary_data(hours: int, user_id: Optional[str] = None):
             })
             
             
-        # 5. Cache stats from ml_db
         cache_stats = {
             "l1": {"hits": 0, "misses": 0, "hit_rate": 0},
             "l2": {"hits": 0, "misses": 0, "hit_rate": 0},
@@ -386,10 +373,9 @@ def _get_summary_data(hours: int, user_id: Optional[str] = None):
         cache_hit_rate = 0.0
         total_hits = 0
         try:
-            cur.close()  # close the previous cursor
-            cur2 = conn.cursor()  # open a fresh one for cache stats
+            cur.close()  
+            cur2 = conn.cursor()  
             if user_id:
-                # Calculate individual cache stats based on explanations
                 cur2.execute("""
                     SELECT ap.explanation, COUNT(*) FROM ai_predictions ap
                     JOIN scan_requests sr ON sr.id = ap.request_id
@@ -404,13 +390,11 @@ def _get_summary_data(hours: int, user_id: Optional[str] = None):
                     elif "(L3)" in exp: l3_hits += cnt
                     else: legacy_hits += cnt
                 
-                # Add legacy unversioned hits to L1
                 l1_hits += legacy_hits
                 
                 user_total = total
                 total_hits = l1_hits + l2_hits + l3_hits
                 
-                # Approximate misses based on sequential L1 -> L2 -> L3 logic
                 l1_total = user_total
                 l2_total = user_total - l1_hits
                 l3_total = user_total - l1_hits - l2_hits
@@ -435,7 +419,6 @@ def _get_summary_data(hours: int, user_id: Optional[str] = None):
                 cache_hit_rate = round(total_hits / user_total, 2) if user_total > 0 else 0.0
                 logger.info(f"User {user_id} cache stats: l1_hits={l1_hits}, l2_hits={l2_hits}, l3_hits={l3_hits}, total={user_total}")
             else:
-                # Global stats
                 cache_stats = prediction_repo.get_cache_stats()
                 l1 = cache_stats.get("l1", {"hits": 0, "misses": 0, "hit_rate": 0})
                 l2 = cache_stats.get("l2", {"hits": 0, "misses": 0, "hit_rate": 0})
@@ -518,11 +501,9 @@ async def get_cache_status():
         conn = prediction_repo.get_postgres_connection()
         cur = conn.cursor()
 
-        # Total scans
         cur.execute("SELECT COUNT(*) FROM scan_requests")
         total = cur.fetchone()[0] or 0
 
-        # Count cache hits per layer from explanation field
         cur.execute("""
             SELECT explanation, COUNT(*)
             FROM ai_predictions
@@ -539,7 +520,7 @@ async def get_cache_status():
             elif "(L3)" in exp:  l3_hits += cnt
             else:                legacy_hits += cnt
 
-        l1_hits += legacy_hits  # unversioned legacy hits → L1
+        l1_hits += legacy_hits      
 
         l2_total = max(0, total - l1_hits)
         l3_total = max(0, total - l1_hits - l2_hits)
@@ -588,13 +569,11 @@ async def get_cache_status_me(
         conn = prediction_repo.get_postgres_connection()
         cur = conn.cursor()
 
-        # Get total scans for this user
         cur.execute("""
             SELECT COUNT(*) FROM scan_requests WHERE user_id = %s::uuid
         """, (user_id,))
         user_total = cur.fetchone()[0] or 0
 
-        # Count cache hits per layer from ai_predictions explanation field
         cur.execute("""
             SELECT ap.explanation, COUNT(*) FROM ai_predictions ap
             JOIN scan_requests sr ON sr.id = ap.request_id
@@ -611,9 +590,8 @@ async def get_cache_status_me(
             elif "(L3)" in exp: l3_hits += cnt
             else: legacy_hits += cnt
 
-        l1_hits += legacy_hits  # legacy unversioned hits count as L1
+        l1_hits += legacy_hits 
 
-        # Approximate misses based on cascading L1 -> L2 -> L3 logic
         l2_total = max(0, user_total - l1_hits)
         l3_total = max(0, user_total - l1_hits - l2_hits)
 

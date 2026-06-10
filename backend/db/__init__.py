@@ -1,29 +1,23 @@
-# backend/db/__init__.py
 """Database module for CYBERSENTINEL AI"""
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Try to import SQLite database (if exists)
 try:
     from backend.db.database import db as sqlite_db
     db = sqlite_db
-    logger.info("✅ Using SQLite database from backend.db.database")
+    logger.info("Using SQLite database from backend.db.database")
 except ImportError:
-    logger.warning("⚠️ backend.db.database not found, SQLite disabled")
+    logger.warning("backend.db.database not found, SQLite disabled")
     db = None
-
-# Try to import ML integration (PostgreSQL/Redis/MongoDB)
 try:
     from backend.db.repository import prediction_repo as ml_db
-    logger.info("✅ ML Integration (Docker databases) available")
+    logger.info("ML Integration (Docker databases) available")
 except ImportError as e:
-    logger.warning(f"⚠️ ML Integration not available: {e}")
+    logger.warning(f"ML Integration not available: {e}")
     ml_db = None
-
-# If no database is available, create a dummy db
 if db is None and ml_db is None:
-    logger.warning("⚠️ No database available, creating dummy database")
+    logger.warning("No database available, creating dummy database")
     class DummyDB:
         def save_scan(self, *args, **kwargs):
             logger.debug("Dummy save_scan called")
@@ -41,5 +35,4 @@ if db is None and ml_db is None:
     db = DummyDB()
     ml_db = DummyDB()
 
-# Export both for convenience
 __all__ = ['db', 'ml_db']

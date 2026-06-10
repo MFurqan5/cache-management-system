@@ -1,9 +1,6 @@
--- Enable UUID support
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- =========================================================
 -- USERS TABLE
--- =========================================================
 
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY,
@@ -14,9 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =========================================================
 -- SCAN REQUESTS TABLE
--- =========================================================
 
 CREATE TABLE IF NOT EXISTS scan_requests (
     id UUID PRIMARY KEY,
@@ -32,9 +27,7 @@ CREATE TABLE IF NOT EXISTS scan_requests (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =========================================================
 -- AI PREDICTIONS TABLE
--- =========================================================
 
 CREATE TABLE IF NOT EXISTS ai_predictions (
     id UUID PRIMARY KEY,
@@ -58,9 +51,7 @@ CREATE TABLE IF NOT EXISTS ai_predictions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =========================================================
 -- THREAT LOGS TABLE
--- =========================================================
 
 CREATE TABLE IF NOT EXISTS threat_logs (
     id SERIAL PRIMARY KEY,

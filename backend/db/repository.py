@@ -1,4 +1,3 @@
-# backend/db/repository.py
 """Integration layer between ML models and existing databases"""
 import os
 import json
@@ -15,10 +14,8 @@ from typing import Dict, Any, Optional
 import logging
 import uuid
 
-# Neo4j graph database (lazy import)
 neo4j_graph = None
 
-# Force load .env
 dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "URLs.env")
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path)
@@ -26,7 +23,6 @@ else:
     load_dotenv()
 logger = logging.getLogger(__name__)
 
-# Database connections
 POSTGRES_URL = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL")
 REDIS_URL = os.getenv("REDIS_URL")
 MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGODB_URI")
@@ -98,22 +94,17 @@ class PredictionRepository:
         try:
             redis_client = self.get_redis_client()
             
-            # Get L1 stats
             l1_hits = int(redis_client.hget("cache_stats:l1", "hits") or 0)
             l1_misses = int(redis_client.hget("cache_stats:l1", "misses") or 0)
             l1_total = l1_hits + l1_misses
             
-            # Get L2 stats
             l2_hits = int(redis_client.hget("cache_stats:l2", "hits") or 0)
             l2_misses = int(redis_client.hget("cache_stats:l2", "misses") or 0)
             l2_total = l2_hits + l2_misses
             
-            # Get L3 stats
             l3_hits = int(redis_client.hget("cache_stats:l3", "hits") or 0)
             l3_misses = int(redis_client.hget("cache_stats:l3", "misses") or 0)
             l3_total = l3_hits + l3_misses
-            
-            # Additional info
             redis_keys = 0
             try:
                 redis_keys = len(redis_client.keys("threat:v1:*"))
@@ -168,12 +159,10 @@ class PredictionRepository:
         
         saved = {"postgres": False, "redis": False, "mongodb": False}
         
-        # 1. Save to PostgreSQL
         try:
             conn = self.get_postgres_connection()
             cur = conn.cursor()
             
-            # Ensure users exist
             cur.execute("SELECT id FROM users WHERE id = %s::uuid", (user_id,))
             if not cur.fetchone():
                 cur.execute("""
@@ -182,7 +171,6 @@ class PredictionRepository:
                     ON CONFLICT (id) DO NOTHING
                 """, (user_id, f"user_{user_id[:8]}@example.com", f"user_{user_id[:8]}", "placeholder", "user"))
             
-            # Insert into scan_requests
             cur.execute("""
                 INSERT INTO scan_requests (id, user_id, input_type, input_value, input_hash, status, created_at)
                 VALUES (%s::uuid, %s::uuid, %s, %s, %s, 'complete', %s)
@@ -192,7 +180,6 @@ class PredictionRepository:
             result = cur.fetchone()
             final_request_id = result[0] if result else request_id
             
-            # Insert into ai_predictions
             prediction_id = str(uuid.uuid4())
             cur.execute("""
                 INSERT INTO ai_predictions
@@ -212,7 +199,6 @@ class PredictionRepository:
                 datetime.utcnow()
             ))
             
-            # Insert into threat_logs
             cur.execute("""
                 INSERT INTO threat_logs (prediction_id, severity, action_taken, notes, created_at)
                 VALUES (%s, %s, %s, %s, %s)
@@ -221,16 +207,15 @@ class PredictionRepository:
             conn.commit()
             cur.close()
             saved["postgres"] = True
-            logger.info(f"✅ Saved to PostgreSQL: {final_request_id}")
+            logger.info(f"Saved to PostgreSQL: {final_request_id}")
             
         except Exception as e:
-            logger.error(f"❌ PostgreSQL save failed: {e}")
+            logger.error(f"PostgreSQL save failed: {e}")
             try:
                 conn.rollback()
             except Exception:
                 pass
         
-        # 1.5 Save to L1 Memory Cache & L2 Redis Cache
         redis_data = {
             "label": prediction.get("label"),
             "type": prediction.get("threat_type"),
@@ -242,20 +227,19 @@ class PredictionRepository:
         try:
             l1_key = cache_manager.get_prediction_cache_key(input_value, input_type)
             cache_manager.cache_prediction(l1_key, redis_data)
-            logger.info(f"✅ Saved to L1 Cache: {l1_key}")
+            logger.info(f"Saved to L1 Cache: {l1_key}")
         except Exception as e:
-            logger.warning(f"⚠️ L1 Cache save failed: {e}")
+            logger.warning(f" L1 Cache save failed: {e}")
 
         try:
             redis_client = self.get_redis_client()
             cache_key = f"threat:v1:{input_hash}"
             redis_client.setex(cache_key, 3600, json.dumps(redis_data))
             saved["redis"] = True
-            logger.info(f"✅ Saved to Redis: {cache_key}")
+            logger.info(f"Saved to Redis: {cache_key}")
         except Exception as e:
-            logger.warning(f"⚠️ Redis save failed: {e}")
+            logger.warning(f"Redis save failed: {e}")
         
-        # 3. Save to MongoDB Cache (optional)
         if MONGO_URL:
             try:
                 mongo_client = self.get_mongo_client()
@@ -287,11 +271,10 @@ class PredictionRepository:
                         upsert=True
                     )
                     saved["mongodb"] = True
-                    logger.info(f"✅ Saved to MongoDB: {input_hash}")
+                    logger.info(f"Saved to MongoDB: {input_hash}")
             except Exception as e:
-                logger.warning(f"⚠️ MongoDB save failed: {e}")
+                logger.warning(f"MongoDB save failed: {e}")
         
-        # 4. Save to Neo4j Graph Database
         saved["neo4j"] = False
         try:
             global neo4j_graph
@@ -310,7 +293,7 @@ class PredictionRepository:
                 )
                 saved["neo4j"] = True
         except Exception as e:
-            logger.warning(f"⚠️ Neo4j save failed: {e}")
+            logger.warning(f"Neo4j save failed: {e}")
         
         logger.info(f"Save completed - PostgreSQL: {saved['postgres']}, Redis: {saved['redis']}, MongoDB: {saved['mongodb']}, Neo4j: {saved['neo4j']}")
         return {
@@ -324,7 +307,6 @@ class PredictionRepository:
         input_hash = hashlib.sha256(input_value.encode()).hexdigest()
         l1_key = cache_manager.get_prediction_cache_key(input_value, input_type)
         
-        # 1. Check L1 Memory Cache
         try:
             cached_l1 = cache_manager.prediction_cache.get(l1_key)
             if cached_l1:
@@ -343,7 +325,6 @@ class PredictionRepository:
         except Exception as e:
             logger.warning(f"L1 memory cache check failed: {e}")
 
-        # 2. Check L2 Redis Cache
         cache_key = f"threat:v1:{input_hash}"
         try:
             redis_client = self.get_redis_client()
@@ -353,7 +334,6 @@ class PredictionRepository:
                 logger.info(f"L2 Redis cache hit for {input_type}")
                 cached_l2 = json.loads(cached_l2_str)
                 
-                # Populate back to L1 Memory
                 try:
                     cache_manager.cache_prediction(l1_key, cached_l2)
                 except Exception as ex:
@@ -370,7 +350,6 @@ class PredictionRepository:
         except Exception as e:
             logger.warning(f"L2 Redis cache check failed: {e}")
 
-        # 3. Check L3 MongoDB Cache
         if MONGO_URL:
             try:
                 mongo_client = self.get_mongo_client()
@@ -393,7 +372,6 @@ class PredictionRepository:
                             **{k: v for k, v in l3_res.items() if k not in ["prediction_label", "threat_type", "confidence_score", "indicators"]}
                         }
                         
-                        # Populate back to L2 Redis and L1 Memory
                         try:
                             cache_manager.cache_prediction(l1_key, result_data)
                             redis_client = self.get_redis_client()
@@ -499,5 +477,4 @@ class PredictionRepository:
         finally:
             cur.close()
 
-# Global instance
 prediction_repo = PredictionRepository()

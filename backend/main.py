@@ -1,8 +1,5 @@
-# backend/main.py (Updated version)
 import sys
 from pathlib import Path
-
-# Add parent directory to path if needed
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi import FastAPI, Request
@@ -17,7 +14,6 @@ from backend.api import scan, stats, auth, graph
 from backend.db import db
 from backend.cache import cache_manager
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -27,10 +23,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
-    # Startup
     logger.info("🚀 Starting CYBERSENTINEL AI Backend...")
-    
-    # Ensure directories exist
     Path("backend/models").mkdir(parents=True, exist_ok=True)
     Path("backend/data").mkdir(parents=True, exist_ok=True)
     
@@ -38,10 +31,8 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Shutdown
     logger.info("🛑 Shutting down CYBERSENTINEL AI...")
 
-# Create FastAPI app
 app = FastAPI(
     title="CYBERSENTINEL AI - ML Security API",
     description="Advanced phishing detection API using Machine Learning",
@@ -51,7 +42,6 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -60,7 +50,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Request timing middleware
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.time()
@@ -69,7 +58,6 @@ async def add_process_time_header(request: Request, call_next):
     response.headers["X-Process-Time"] = str(round(process_time * 1000, 2))
     return response
 
-# Exception handlers
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     logger.error(f"Validation error: {exc.errors()}")
@@ -95,13 +83,10 @@ async def debug_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# Include routers
 app.include_router(scan.router)
 app.include_router(stats.router)
 app.include_router(auth.router)
 app.include_router(graph.router)
-
-# Root endpoint
 @app.get("/")
 async def root():
     return {
@@ -123,7 +108,6 @@ async def root():
         }
     }
 
-# Neo4j status helper
 def _neo4j_status():
     try:
         from backend.db.neo4j_integration import get_neo4j
@@ -132,11 +116,9 @@ def _neo4j_status():
     except Exception:
         return "unavailable"
 
-# Health check
 @app.get("/health")
 async def health_check():
     from pathlib import Path
-    
     models_path = Path("backend/models")
     url_model = (models_path / "url_model.pkl").exists()
     email_model = (models_path / "email_model.pkl").exists()
