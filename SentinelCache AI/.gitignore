@@ -1,0 +1,20 @@
+# Security — NEVER commit this
+.env
+
+# ML models & datasets — too large for GitHub
+ml_training/datasets/*.csv
+ml_training/models/*.pkl
+backend/models/*.pkl
+# Python
+__pycache__/
+*.pyc
+venv/
+env/
+
+# Frontend
+node_modules/
+dist/
+
+# OS
+.DS_Store
+*.log

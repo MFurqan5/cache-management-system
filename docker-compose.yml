@@ -1,0 +1,76 @@
+version: "3.9"
+
+# ============================================================
+# AI Cybersecurity Threat Detector - Docker Compose
+# Run:  docker-compose up -d
+# Stop: docker-compose down
+# Wipe: docker-compose down -v   (deletes all data)
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # PostgreSQL - Main permanent database
+  # Port 5432 on your laptop
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: cyber_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cyberuser
+      POSTGRES_PASSWORD: cyberpass123
+      POSTGRES_DB: Cache_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cyberuser -d Cache_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # Redis - L2 Cache (fast RAM cache)
+  # Port 6379 on your laptop
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: cyber_redis
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # MongoDB - L3 Cache (persistent cache with TTL auto-delete)
+  # Port 27017 on your laptop
+  # ----------------------------------------------------------
+  mongodb:
+    image: mongo:6-jammy
+    container_name: cyber_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: cyberuser
+      MONGO_INITDB_ROOT_PASSWORD: cyberpass123
+      MONGO_INITDB_DATABASE: Cache_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  mongo_data:
