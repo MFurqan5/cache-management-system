@@ -13,7 +13,7 @@ import time
 import logging
 from contextlib import asynccontextmanager
 
-from backend.routes import scan, stats, auth
+from backend.routes import scan, stats, auth, graph
 from backend.db import db
 from backend.cache import cache_manager
 
@@ -99,6 +99,7 @@ async def debug_exception_handler(request: Request, exc: Exception):
 app.include_router(scan.router)
 app.include_router(stats.router)
 app.include_router(auth.router)
+app.include_router(graph.router)
 
 # Root endpoint
 @app.get("/")
@@ -122,6 +123,15 @@ async def root():
         }
     }
 
+# Neo4j status helper
+def _neo4j_status():
+    try:
+        from backend.db.neo4j_integration import get_neo4j
+        neo4j = get_neo4j()
+        return "connected" if (neo4j and neo4j.is_connected) else "disconnected"
+    except Exception:
+        return "unavailable"
+
 # Health check
 @app.get("/health")
 async def health_check():
@@ -138,6 +148,7 @@ async def health_check():
         "services": {
             "database": "connected",
             "cache": "active",
+            "neo4j": _neo4j_status(),
             "models": {
                 "url_model": url_model,
                 "email_model": email_model,

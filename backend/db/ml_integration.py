@@ -15,6 +15,9 @@ from typing import Dict, Any, Optional
 import logging
 import uuid
 
+# Neo4j graph database (lazy import)
+neo4j_graph = None
+
 # Force load .env
 dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "URLs.env")
 if os.path.exists(dotenv_path):
@@ -288,7 +291,28 @@ class MLDatabaseIntegration:
             except Exception as e:
                 logger.warning(f"⚠️ MongoDB save failed: {e}")
         
-        logger.info(f"Save completed - PostgreSQL: {saved['postgres']}, Redis: {saved['redis']}, MongoDB: {saved['mongodb']}")
+        # 4. Save to Neo4j Graph Database
+        saved["neo4j"] = False
+        try:
+            global neo4j_graph
+            if neo4j_graph is None:
+                from backend.db.neo4j_integration import get_neo4j
+                neo4j_graph = get_neo4j()
+            if neo4j_graph and neo4j_graph.is_connected:
+                neo4j_graph.save_scan_to_graph(
+                    request_id=request_id,
+                    user_id=user_id,
+                    input_type=input_type,
+                    input_value=input_value,
+                    prediction=prediction,
+                    model_version=model_version,
+                    inference_ms=inference_ms,
+                )
+                saved["neo4j"] = True
+        except Exception as e:
+            logger.warning(f"⚠️ Neo4j save failed: {e}")
+        
+        logger.info(f"Save completed - PostgreSQL: {saved['postgres']}, Redis: {saved['redis']}, MongoDB: {saved['mongodb']}, Neo4j: {saved['neo4j']}")
         return {
             "request_id": request_id,
             "saved": saved,
