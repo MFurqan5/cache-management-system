@@ -1,4 +1,4 @@
-# backend/db/ml_integration.py
+# backend/db/repository.py
 """Integration layer between ML models and existing databases"""
 import os
 import json
@@ -31,14 +31,14 @@ POSTGRES_URL = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL")
 REDIS_URL = os.getenv("REDIS_URL")
 MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGODB_URI")
 
-class MLDatabaseIntegration:
+class PredictionRepository:
     """Handles all database operations for ML predictions"""
     
     def __init__(self):
         self.postgres_conn = None
         self.redis_client = None
         self.mongo_client = None
-        logger.info("MLDatabaseIntegration initialized")
+        logger.info("PredictionRepository initialized")
     
     def get_postgres_connection(self):
         """Get PostgreSQL connection"""
@@ -500,4 +500,4 @@ class MLDatabaseIntegration:
             cur.close()
 
 # Global instance
-ml_db = MLDatabaseIntegration()
+prediction_repo = PredictionRepository()

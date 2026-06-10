@@ -1,28 +1,27 @@
 # backend/routes/stats.py
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List, Dict
-from backend.routes.auth import get_current_user
+from backend.api.auth import get_current_user
 from datetime import datetime, timedelta
 import json
 import logging
+from backend.db.repository import prediction_repo
 
 def get_fresh_connection():
     """Always get a fresh connection to avoid SSL timeout issues"""
     try:
-        conn = ml_db.get_postgres_connection()
+        conn = prediction_repo.get_postgres_connection()
         # Test if connection is alive
         conn.cursor().execute("SELECT 1")
         return conn
     except Exception:
         # Force reconnect
-        ml_db._postgres_conn = None  # reset cached connection
-        return ml_db.get_postgres_connection()
+        prediction_repo._postgres_conn = None  # reset cached connection
+        return prediction_repo.get_postgres_connection()
 
 # Setup logger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-from backend.db.ml_integration import ml_db
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -44,7 +43,7 @@ async def get_history(
         scan_type = getattr(scan_type, "default", None)
         
     try:
-        conn = ml_db.get_postgres_connection()
+        conn = prediction_repo.get_postgres_connection()
         cur = conn.cursor()
         
         query = """
@@ -128,7 +127,7 @@ async def get_my_history(
     """Get scan history for the currently authenticated user only"""
     user_id = current_user.get("id")
     try:
-        conn = ml_db.get_postgres_connection()
+        conn = prediction_repo.get_postgres_connection()
         cur = conn.cursor()
         cur.execute("""
             SELECT COUNT(*) 
@@ -173,7 +172,7 @@ def _get_summary_data(hours: int, user_id: Optional[str] = None):
     if not isinstance(hours, (int, float)):
         hours = getattr(hours, "default", 24)
     try:
-        conn = ml_db.get_postgres_connection()
+        conn = prediction_repo.get_postgres_connection()
         cur = conn.cursor()
         
         # 1. Total counts — ALL-TIME (no time filter) so Dashboard & History always match
@@ -437,7 +436,7 @@ def _get_summary_data(hours: int, user_id: Optional[str] = None):
                 logger.info(f"User {user_id} cache stats: l1_hits={l1_hits}, l2_hits={l2_hits}, l3_hits={l3_hits}, total={user_total}")
             else:
                 # Global stats
-                cache_stats = ml_db.get_cache_stats()
+                cache_stats = prediction_repo.get_cache_stats()
                 l1 = cache_stats.get("l1", {"hits": 0, "misses": 0, "hit_rate": 0})
                 l2 = cache_stats.get("l2", {"hits": 0, "misses": 0, "hit_rate": 0})
                 l3 = cache_stats.get("l3", {"hits": 0, "misses": 0, "hit_rate": 0})
@@ -516,7 +515,7 @@ async def get_summary_me(
 async def get_cache_status():
     """Get REAL cache status — computed from DB scan history (admin use)"""
     try:
-        conn = ml_db.get_postgres_connection()
+        conn = prediction_repo.get_postgres_connection()
         cur = conn.cursor()
 
         # Total scans
@@ -586,7 +585,7 @@ async def get_cache_status_me(
     """Get per-user cache stats computed from scan history"""
     user_id = current_user.get("id")
     try:
-        conn = ml_db.get_postgres_connection()
+        conn = prediction_repo.get_postgres_connection()
         cur = conn.cursor()
 
         # Get total scans for this user

@@ -23,11 +23,11 @@ class Database:
         
         # Try to initialize Docker databases (PostgreSQL, Redis, MongoDB)
         self.docker_available = False
-        self.ml_integration = None
+        self.prediction_repo = None
         
         try:
-            from backend.db.ml_integration import MLDatabaseIntegration
-            self.ml_integration = MLDatabaseIntegration()
+            from backend.db.repository import prediction_repo
+            self.prediction_repo = prediction_repo
             self.docker_available = True
             logger.info("Docker databases (PostgreSQL/Redis/MongoDB) connected")
         except Exception as e:
@@ -214,9 +214,9 @@ class Database:
     
     def create_user(self, username: str, email: str, password_hash: str) -> str:
         """Create a new user — PostgreSQL primary, SQLite fallback"""
-        if self.docker_available and self.ml_integration:
+        if self.docker_available and self.prediction_repo:
             try:
-                return self.ml_integration.create_user_postgres(username, email, password_hash)
+                return self.prediction_repo.create_user_postgres(username, email, password_hash)
             except Exception as e:
                 logger.error(f"PostgreSQL create_user failed, falling back to SQLite: {e}")
         with self.get_sqlite_connection() as conn:
@@ -230,9 +230,9 @@ class Database:
 
     def get_user_by_username(self, username: str) -> Optional[dict]:
         """Retrieve a user by username — PostgreSQL primary, SQLite fallback"""
-        if self.docker_available and self.ml_integration:
+        if self.docker_available and self.prediction_repo:
             try:
-                return self.ml_integration.get_user_by_username_postgres(username)
+                return self.prediction_repo.get_user_by_username_postgres(username)
             except Exception as e:
                 logger.error(f"PostgreSQL get_user_by_username failed, falling back to SQLite: {e}")
         with self.get_sqlite_connection() as conn:
@@ -243,9 +243,9 @@ class Database:
 
     def get_user_by_email(self, email: str) -> Optional[dict]:
         """Retrieve a user by email — PostgreSQL primary, SQLite fallback"""
-        if self.docker_available and self.ml_integration:
+        if self.docker_available and self.prediction_repo:
             try:
-                return self.ml_integration.get_user_by_email_postgres(email)
+                return self.prediction_repo.get_user_by_email_postgres(email)
             except Exception as e:
                 logger.error(f"PostgreSQL get_user_by_email failed, falling back to SQLite: {e}")
         with self.get_sqlite_connection() as conn:

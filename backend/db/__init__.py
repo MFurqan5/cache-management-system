@@ -1,21 +1,21 @@
 # backend/db/__init__.py
-"""Database module for SENTINELCACHE AI"""
+"""Database module for CYBERSENTINEL AI"""
 import logging
 
 logger = logging.getLogger(__name__)
 
 # Try to import SQLite database (if exists)
 try:
-    from backend.database import db as sqlite_db
+    from backend.db.database import db as sqlite_db
     db = sqlite_db
-    logger.info("✅ Using SQLite database from backend.database")
+    logger.info("✅ Using SQLite database from backend.db.database")
 except ImportError:
-    logger.warning("⚠️ backend.database not found, SQLite disabled")
+    logger.warning("⚠️ backend.db.database not found, SQLite disabled")
     db = None
 
 # Try to import ML integration (PostgreSQL/Redis/MongoDB)
 try:
-    from backend.db.ml_integration import ml_db
+    from backend.db.repository import prediction_repo as ml_db
     logger.info("✅ ML Integration (Docker databases) available")
 except ImportError as e:
     logger.warning(f"⚠️ ML Integration not available: {e}")

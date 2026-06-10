@@ -13,7 +13,7 @@ import time
 import logging
 from contextlib import asynccontextmanager
 
-from backend.routes import scan, stats, auth, graph
+from backend.api import scan, stats, auth, graph
 from backend.db import db
 from backend.cache import cache_manager
 

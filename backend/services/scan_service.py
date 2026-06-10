@@ -12,12 +12,12 @@ import os
 import uuid
 import logging
 
-from backend.db.ml_integration import ml_db
-from backend.routes.auth import decode_token
+from backend.db.repository import prediction_repo
+from backend.api.auth import decode_token
 from fastapi import Request
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/scan", tags=["scan"])
+
 
 def _extract_user_id(request: Request) -> Optional[str]:
     """Try to extract user_id from the Authorization header (Bearer token).
@@ -32,7 +32,7 @@ def _extract_user_id(request: Request) -> Optional[str]:
 
 def _log_cache_hit(background_tasks, user_id, input_type, input_value, result, model_version, cache_time_ms, from_cache="unknown"):
     """Save a scan record even when we hit the cache, so user history stays populated."""
-    if not ml_db or not hasattr(ml_db, 'save_prediction'):
+    if not prediction_repo or not hasattr(prediction_repo, 'save_prediction'):
         return
         
     score = result.get("score", 0.5)
@@ -56,7 +56,7 @@ def _log_cache_hit(background_tasks, user_id, input_type, input_value, result, m
     req_id = str(uuid.uuid4())
     try:
         background_tasks.add_task(
-            ml_db.save_prediction,
+            prediction_repo.save_prediction,
             req_id, user_id, input_type, input_value, prediction_data,
             model_version, cache_time_ms, severity, action
         )
@@ -89,7 +89,7 @@ class ScanResponse(BaseModel):
 
 def extract_url_features(url: str) -> np.ndarray:
     """Extract 25 URL features using shared feature module"""
-    from backend.url_features import extract_url_features_single
+    from backend.services.url_features import extract_url_features_single
     return extract_url_features_single(url)
 
 def load_model(model_name: str):
@@ -206,8 +206,7 @@ def get_email_explanation(email_text: str, score: float) -> tuple:
     
     return threat_type, explanation, indicators
 
-@router.post("/url", response_model=ScanResponse)
-async def scan_url(request: URLScanRequest, background_tasks: BackgroundTasks, raw_request: Request):
+async def process_scan_url(request: URLScanRequest, background_tasks: BackgroundTasks, raw_request: Request):
     """Scan URL for phishing detection - integrates with existing database"""
     import time
     
@@ -221,7 +220,7 @@ async def scan_url(request: URLScanRequest, background_tasks: BackgroundTasks, r
         user_id = request.user_id
     if not user_id and request.email:
         try:
-            user_id = ml_db.get_user_id(request.email)
+            user_id = prediction_repo.get_user_id(request.email)
         except Exception as e:
             logger.warning(f"Could not get user_id: {e}")
             user_id = None
@@ -232,12 +231,12 @@ async def scan_url(request: URLScanRequest, background_tasks: BackgroundTasks, r
     cached = None
     cache_start = time.time()
     try:
-        if ml_db and hasattr(ml_db, 'check_cache'):
-            cached = ml_db.check_cache(url_str, "url")
+        if prediction_repo and hasattr(prediction_repo, 'check_cache'):
+            cached = prediction_repo.check_cache(url_str, "url")
         else:
-            logger.warning("ml_db or check_cache not available")
+            logger.warning("prediction_repo or check_cache not available")
     except Exception as e:
-        logger.warning(f"Cache check failed (continuing without cache): {e}")
+        logger.warning(f"Cache check failed (continuing without cache): {e}", exc_info=True)
         cached = None
     cache_time_ms = (time.time() - cache_start) * 1000
     
@@ -263,7 +262,7 @@ async def scan_url(request: URLScanRequest, background_tasks: BackgroundTasks, r
             cached = None
     
     features_array = extract_url_features(url_str)
-    from backend.url_features import FEATURE_NAMES
+    from backend.services.url_features import FEATURE_NAMES
     features_dict = {name: float(features_array[0][i]) for i, name in enumerate(FEATURE_NAMES)}
     
     model = load_model("url_model")
@@ -310,14 +309,14 @@ async def scan_url(request: URLScanRequest, background_tasks: BackgroundTasks, r
         action = "none"
     
     try:
-        if ml_db and hasattr(ml_db, 'save_prediction'):
+        if prediction_repo and hasattr(prediction_repo, 'save_prediction'):
             background_tasks.add_task(
-                ml_db.save_prediction,
+                prediction_repo.save_prediction,
                 request_id, user_id, "url", url_str, prediction_data,
                 "rf-url-v2.1-test", prediction_time, severity, action
             )
         else:
-            logger.warning("ml_db or save_prediction not available, skipping save")
+            logger.warning("prediction_repo or save_prediction not available, skipping save")
     except Exception as e:
         logger.error(f"Failed to schedule save to database: {e}")
     
@@ -336,8 +335,7 @@ async def scan_url(request: URLScanRequest, background_tasks: BackgroundTasks, r
         timestamp=datetime.now().isoformat()
     )
 
-@router.post("/email", response_model=ScanResponse)
-async def scan_email(request: EmailScanRequest, background_tasks: BackgroundTasks, raw_request: Request):
+async def process_scan_email(request: EmailScanRequest, background_tasks: BackgroundTasks, raw_request: Request):
     """Scan email content - integrates with existing database"""
     import time
     
@@ -352,7 +350,7 @@ async def scan_email(request: EmailScanRequest, background_tasks: BackgroundTask
         user_id = request.user_id
     if not user_id and request.email:
         try:
-            user_id = ml_db.get_user_id(request.email)
+            user_id = prediction_repo.get_user_id(request.email)
         except Exception as e:
             logger.warning(f"Could not get user_id: {e}")
             user_id = None
@@ -363,12 +361,12 @@ async def scan_email(request: EmailScanRequest, background_tasks: BackgroundTask
     cached = None
     cache_start = time.time()
     try:
-        if ml_db and hasattr(ml_db, 'check_cache'):
-            cached = ml_db.check_cache(email_preview, "email")
+        if prediction_repo and hasattr(prediction_repo, 'check_cache'):
+            cached = prediction_repo.check_cache(email_preview, "email")
         else:
-            logger.warning("ml_db or check_cache not available")
+            logger.warning("prediction_repo or check_cache not available")
     except Exception as e:
-        logger.warning(f"Cache check failed (continuing without cache): {e}")
+        logger.warning(f"Cache check failed (continuing without cache): {e}", exc_info=True)
         cached = None
     cache_time_ms = (time.time() - cache_start) * 1000
     
@@ -478,14 +476,14 @@ async def scan_email(request: EmailScanRequest, background_tasks: BackgroundTask
         action = "none"
     
     try:
-        if ml_db and hasattr(ml_db, 'save_prediction'):
+        if prediction_repo and hasattr(prediction_repo, 'save_prediction'):
             background_tasks.add_task(
-                ml_db.save_prediction,
+                prediction_repo.save_prediction,
                 request_id, user_id, "email", email_text[:500], prediction_data,
                 "nb-email-v1.3-test", prediction_time, severity, action
             )
         else:
-            logger.warning("ml_db or save_prediction not available, skipping save")
+            logger.warning("prediction_repo or save_prediction not available, skipping save")
     except Exception as e:
         logger.error(f"Failed to schedule save to database: {e}")
     
@@ -508,8 +506,7 @@ async def scan_email(request: EmailScanRequest, background_tasks: BackgroundTask
 class AppSearchRequest(BaseModel):
     app_name: str
 
-@router.post("/app")
-async def scan_app(background_tasks: BackgroundTasks, raw_request: Request, file: UploadFile = File(...), user_id: Optional[str] = None):
+async def process_scan_app(background_tasks: BackgroundTasks, raw_request: Request, file: UploadFile = File(...), user_id: Optional[str] = None):
     """Scan file upload for malware detection and check cache"""
     import time
     start_time = time.time()
@@ -542,8 +539,8 @@ async def scan_app(background_tasks: BackgroundTasks, raw_request: Request, file
     cached = None
     cache_start = time.time()
     try:
-        if ml_db and hasattr(ml_db, 'check_cache'):
-            cached = ml_db.check_cache(file_hash, input_type)
+        if prediction_repo and hasattr(prediction_repo, 'check_cache'):
+            cached = prediction_repo.check_cache(file_hash, input_type)
     except Exception as e:
         logger.warning(f"Cache check failed for file: {e}")
     cache_time_ms = (time.time() - cache_start) * 1000
@@ -600,15 +597,15 @@ async def scan_app(background_tasks: BackgroundTasks, raw_request: Request, file
     
     # Save to databases in background - USE input_type here!
     try:
-        if ml_db and hasattr(ml_db, 'save_prediction'):
+        if prediction_repo and hasattr(prediction_repo, 'save_prediction'):
             background_tasks.add_task(
-                ml_db.save_prediction,
+                prediction_repo.save_prediction,
                 request_id, user_id, input_type, file_hash, prediction_data,
                 "file-malware-v1.0", prediction_time, severity, action
             )
             logger.info(f"✅ Saved {input_type} scan for {file_name}")
         else:
-            logger.warning("ml_db or save_prediction not available, skipping save")
+            logger.warning("prediction_repo or save_prediction not available, skipping save")
     except Exception as e:
         logger.error(f"Failed to schedule file scan save: {e}")
         
@@ -624,8 +621,7 @@ async def scan_app(background_tasks: BackgroundTasks, raw_request: Request, file
         "prediction_time_ms": round(prediction_time, 2)
     }
 
-@router.post("/app-name")
-async def search_app_safety(request: AppSearchRequest, background_tasks: BackgroundTasks, raw_request: Request, user_id: Optional[str] = None):
+async def process_search_app_safety(request: AppSearchRequest, background_tasks: BackgroundTasks, raw_request: Request, user_id: Optional[str] = None):
     """Search if an app is verified safe and check cache"""
     import time
     start_time = time.time()
@@ -644,8 +640,8 @@ async def search_app_safety(request: AppSearchRequest, background_tasks: Backgro
     cached = None
     cache_start = time.time()
     try:
-        if ml_db and hasattr(ml_db, 'check_cache'):
-            cached = ml_db.check_cache(app_query.lower(), "app")
+        if prediction_repo and hasattr(prediction_repo, 'check_cache'):
+            cached = prediction_repo.check_cache(app_query.lower(), "app")
     except Exception as e:
         logger.warning(f"Cache check failed for app: {e}")
     cache_time_ms = (time.time() - cache_start) * 1000
@@ -743,9 +739,9 @@ async def search_app_safety(request: AppSearchRequest, background_tasks: Backgro
     
     # Save to databases in background
     try:
-        if ml_db and hasattr(ml_db, 'save_prediction'):
+        if prediction_repo and hasattr(prediction_repo, 'save_prediction'):
             background_tasks.add_task(
-                ml_db.save_prediction,
+                prediction_repo.save_prediction,
                 request_id, user_id, "app", app_query.lower(), prediction_data,
                 "app-checker-v1.0", prediction_time, severity, action
             )
@@ -764,8 +760,7 @@ async def search_app_safety(request: AppSearchRequest, background_tasks: Backgro
         "prediction_time_ms": round(prediction_time, 2)
     }
 
-@router.get("/health")
-async def scan_health():
+async def process_scan_health():
     """Health check for scan endpoints - with graceful error handling"""
     url_model_exists = Path("backend/models/url_model.pkl").exists()
     email_model_exists = Path("backend/models/email_model.pkl").exists()
@@ -777,26 +772,26 @@ async def scan_health():
         "mongodb": "not_configured"
     }
     
-    if ml_db:
+    if prediction_repo:
         try:
-            if hasattr(ml_db, 'get_postgres_connection'):
-                conn = ml_db.get_postgres_connection()
+            if hasattr(prediction_repo, 'get_postgres_connection'):
+                conn = prediction_repo.get_postgres_connection()
                 if conn:
                     db_status["postgres"] = "connected"
         except Exception as e:
             db_status["postgres"] = f"unavailable: {str(e)[:40]}"
         
         try:
-            if hasattr(ml_db, 'get_redis_client'):
-                redis_client = ml_db.get_redis_client()
+            if hasattr(prediction_repo, 'get_redis_client'):
+                redis_client = prediction_repo.get_redis_client()
                 redis_client.ping()
                 db_status["redis"] = "connected"
         except Exception as e:
             db_status["redis"] = f"unavailable: {str(e)[:40]}"
         
         try:
-            if hasattr(ml_db, 'get_mongo_client'):
-                mongo_client = ml_db.get_mongo_client()
+            if hasattr(prediction_repo, 'get_mongo_client'):
+                mongo_client = prediction_repo.get_mongo_client()
                 mongo_client.server_info()
                 db_status["mongodb"] = "connected"
         except Exception as e:

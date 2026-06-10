@@ -12,7 +12,7 @@ import bcrypt
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
 
-from backend.database import db
+from backend.db import db
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +227,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     """Get current logged-in user profile from PostgreSQL"""
     user_id = current_user.get("id")
     try:
-        conn = db.ml_integration.get_postgres_connection()
+        conn = db.prediction_repo.get_postgres_connection()
         import psycopg2.extras
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
@@ -270,7 +270,7 @@ async def update_me(update_data: UserUpdateRequest, current_user: dict = Depends
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided to update")
 
     try:
-        conn = db.ml_integration.get_postgres_connection()
+        conn = db.prediction_repo.get_postgres_connection()
         import psycopg2.extras
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
